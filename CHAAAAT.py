@@ -16,7 +16,7 @@ def charger_modele_embedding():
 
 embedding_model = charger_modele_embedding()
 
-# --- Fonctions de traitement de document ---
+# --- Fonctions de traitement du document ---
 def extraire_texte_pdf(fichier_pdf):
     reader = PdfReader(fichier_pdf)
     pages = []
@@ -82,7 +82,7 @@ RÉPONSE :"""
 
 # --- Interface utilisateur ---
 st.title("📚 Assistant RAG — Charte ENSA Safi")
-st.caption("Alimenté par Groq & `openai/gpt-oss-20b`")
+st.caption("Modèle : openai/gpt-oss-20b via Groq")
 
 with st.sidebar:
     st.header("Configuration")
@@ -104,11 +104,11 @@ with st.sidebar:
         st.session_state["messages"] = []
         st.rerun()
 
-# Initialisation de l'historique de discussion
+# Initialisation de l'historique
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
-# Indexation vectorielle du fichier chargé
+# Indexation du fichier PDF
 if fichier_charge is not None:
     if "nom_fichier" not in st.session_state or st.session_state["nom_fichier"] != fichier_charge.name:
         with st.spinner("Extraction et indexation vectorielle en cours..."):
@@ -120,9 +120,9 @@ if fichier_charge is not None:
             st.session_state["total_pages"] = len(pages)
         st.sidebar.success(f"{st.session_state['total_pages']} pages indexées ({len(chunks)} fragments).")
 else:
-    st.info("Veuillez charger un fichier PDF (ex. *Charte ENSA SAFI.pdf*) dans la barre latérale pour activer la recherche.")
+    st.info("Veuillez charger un fichier PDF dans la barre latérale pour démarrer.")
 
-# Affichage des messages précédents
+# Affichage des messages passés
 for msg in st.session_state["messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -132,8 +132,8 @@ for msg in st.session_state["messages"]:
                     st.markdown(f"**Page {src['page']}** (Score: `{src['score']:.3f}`)")
                     st.caption(src["texte"][:300] + "...")
 
-# Traitement de la question utilisateur
-if prompt := st.chat_input("Posez votre question sur la charte..."):
+# Saisie de la question
+if prompt := st.chat_input("Posez votre question sur le document..."):
     if not api_key:
         st.error("Veuillez renseigner votre clé API Groq dans la barre latérale.")
     elif "index" not in st.session_state:
@@ -148,7 +148,7 @@ if prompt := st.chat_input("Posez votre question sur la charte..."):
         passages = rechercher(prompt, st.session_state["index"], st.session_state["chunks"], k=top_k)
         prompt_augmente = construire_prompt(prompt, passages)
 
-        # Inférence avec Groq
+        # Appel LLM via Groq
         with st.chat_message("assistant"):
             with st.spinner(f"Génération avec {modele_choisi}..."):
                 try:
@@ -163,11 +163,16 @@ if prompt := st.chat_input("Posez votre question sur la charte..."):
                     texte_reponse = completion.choices[0].message.content
                     st.markdown(texte_reponse)
 
-                    # Affichage des sources associées
                     with st.expander("Sources consultées"):
                         for p in passages:
                             st.markdown(f"**Page {p['page']}** (Score: `{p['score']:.3f}`)")
                             st.caption(p["texte"][:300] + "...")
 
-                    st.session_state["messages"].append({
+                    nouveau_message = {
                         "role": "assistant",
+                        "content": texte_reponse,
+                        "sources": passages
+                    }
+                    st.session_state["messages"].append(nouveau_message)
+                except Exception as e:
+                    st.error(f"Erreur lors de l'appel à l'API Groq : {e}")
