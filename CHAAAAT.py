@@ -6,15 +6,14 @@ from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 from groq import Groq
 
-# Configuration générale
+# Configuration générale (sans icône)
 st.set_page_config(
     page_title="Charte ENSA Safi — Assistant Académique",
-    page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Injection de styles CSS professionnels
+# Styles CSS professionnels
 CUSTOM_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
@@ -232,11 +231,11 @@ with st.sidebar:
             "llama-3.1-8b-instant"
         ],
         index=0,
-        help="OpenAI GPT-OSS 20B offre une exécution ultra-rapide optimisée pour le RAG."
+        help="OpenAI GPT-OSS 20B offre une exécution rapide optimisée pour le RAG."
     )
 
     st.markdown("---")
-    st.markdown("### Document de Référence")
+    st.markdown("### Document de référence")
     fichier_charge = st.file_uploader("Fichier PDF de la charte", type=["pdf"], label_visibility="collapsed")
     top_k = st.slider("Passages analysés (k)", min_value=2, max_value=8, value=4)
 
@@ -244,8 +243,8 @@ with st.sidebar:
         st.markdown(
             f"""
             <div class="metric-box">
-                <div class="label">Fichier indexé</div>
-                <div class="val" style="color: #059669; font-size:0.92rem;">✓ {st.session_state.get('nom_fichier', 'Document')}</div>
+                <div class="label">Document actif</div>
+                <div class="val" style="font-size:0.92rem;">{st.session_state.get('nom_fichier', 'Document')}</div>
             </div>
             <div style="display: flex; gap: 8px;">
                 <div class="metric-box" style="flex: 1;">
