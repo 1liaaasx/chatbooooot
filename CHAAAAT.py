@@ -4,9 +4,10 @@ import re
 import faiss
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
-from google import genai
+from groq import Groq
 
-st.set_page_config(page_title="Assistant RAG - ENSA Safi", layout="wide")
+# Configuration de la page
+st.set_page_config(page_title="Assistant RAG - ENSA Safi (Groq / GPT-OSS 20B)", layout="wide")
 
 # --- Initialisation du modèle d'embedding (mis en cache) ---
 @st.cache_resource
@@ -81,10 +82,21 @@ RÉPONSE :"""
 
 # --- Interface utilisateur ---
 st.title("📚 Assistant RAG — Charte ENSA Safi")
+st.caption("Alimenté par Groq & `openai/gpt-oss-20b`")
 
 with st.sidebar:
     st.header("Configuration")
-    api_key = st.text_input("Clé API Gemini", type="password", help="Obtenez une clé sur Google AI Studio")
+    api_key = st.text_input("Clé API Groq", type="password", help="Obtenez une clé sur console.groq.com")
+    modele_choisi = st.selectbox(
+        "Modèle Groq",
+        [
+            "openai/gpt-oss-20b",
+            "openai/gpt-oss-120b",
+            "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant"
+        ],
+        index=0
+    )
     fichier_charge = st.file_uploader("Charger le document PDF", type=["pdf"])
     top_k = st.slider("Nombre de passages à récupérer (top-k)", min_value=1, max_value=8, value=4)
 
@@ -92,11 +104,11 @@ with st.sidebar:
         st.session_state["messages"] = []
         st.rerun()
 
-# Initialisation de l'historique
+# Initialisation de l'historique de discussion
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
-# Indexation du fichier
+# Indexation vectorielle du fichier chargé
 if fichier_charge is not None:
     if "nom_fichier" not in st.session_state or st.session_state["nom_fichier"] != fichier_charge.name:
         with st.spinner("Extraction et indexation vectorielle en cours..."):
@@ -108,9 +120,9 @@ if fichier_charge is not None:
             st.session_state["total_pages"] = len(pages)
         st.sidebar.success(f"{st.session_state['total_pages']} pages indexées ({len(chunks)} fragments).")
 else:
-    st.info("Veuillez charger un fichier PDF (ex. *Charte ENSA SAFI.pdf*) dans la barre latérale pour démarrer.")
+    st.info("Veuillez charger un fichier PDF (ex. *Charte ENSA SAFI.pdf*) dans la barre latérale pour activer la recherche.")
 
-# Affichage des messages passés
+# Affichage des messages précédents
 for msg in st.session_state["messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -120,34 +132,38 @@ for msg in st.session_state["messages"]:
                     st.markdown(f"**Page {src['page']}** (Score: `{src['score']:.3f}`)")
                     st.caption(src["texte"][:300] + "...")
 
-# Saisie de la question
-if prompt := st.chat_input("Posez votre question sur le document..."):
+# Traitement de la question utilisateur
+if prompt := st.chat_input("Posez votre question sur la charte..."):
     if not api_key:
-        st.error("Veuillez renseigner votre clé API Gemini dans la barre latérale.")
+        st.error("Veuillez renseigner votre clé API Groq dans la barre latérale.")
     elif "index" not in st.session_state:
         st.error("Veuillez charger et indexer un fichier PDF avant de poser une question.")
     else:
-        # Affichage message utilisateur
+        # Message utilisateur
         st.session_state["messages"].append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Recherche documentaire
+        # Recherche de fragments pertinents
         passages = rechercher(prompt, st.session_state["index"], st.session_state["chunks"], k=top_k)
         prompt_augmente = construire_prompt(prompt, passages)
 
-        # Appel LLM
+        # Inférence avec Groq
         with st.chat_message("assistant"):
-            with st.spinner("Génération de la réponse..."):
+            with st.spinner(f"Génération avec {modele_choisi}..."):
                 try:
-                    client = genai.Client(api_key=api_key)
-                    reponse = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=prompt_augmente
+                    client = Groq(api_key=api_key)
+                    completion = client.chat.completions.create(
+                        model=modele_choisi,
+                        messages=[
+                            {"role": "user", "content": prompt_augmente}
+                        ],
+                        temperature=0.1
                     )
-                    texte_reponse = reponse.text
+                    texte_reponse = completion.choices[0].message.content
                     st.markdown(texte_reponse)
 
+                    # Affichage des sources associées
                     with st.expander("Sources consultées"):
                         for p in passages:
                             st.markdown(f"**Page {p['page']}** (Score: `{p['score']:.3f}`)")
@@ -155,8 +171,3 @@ if prompt := st.chat_input("Posez votre question sur le document..."):
 
                     st.session_state["messages"].append({
                         "role": "assistant",
-                        "content": texte_reponse,
-                        "sources": passages
-                    })
-                except Exception as e:
-                    st.error(f"Erreur lors de la génération : {e}")
